@@ -35,10 +35,12 @@
  *    for how to add that display field.
  *
  * 3. RELATED RECORDS TAB
- *    The PO is created via record.transform() from the SO. This is the only
- *    SuiteScript path that writes the linkedtransaction table entry NetSuite
- *    reads to populate the Related Records tab. record.create() with a
- *    createdfrom value only sets the body field and does NOT create that link.
+ *    The PO is created with record.create() and createdfrom = parseInt(soId).
+ *    NetSuite recognises createdfrom pointing to an SO as a Special Order
+ *    relationship and shows the PO on the SO's Related Records tab.
+ *    The parseInt() is critical — soId arrives as a URL parameter string and
+ *    createdfrom silently fails to link when passed a string value.
+ *    Note: record.transform() from SO → PO is not a supported transformation.
  *
  * 4. RETURN TO SO BUTTON
  *    The result page injects a <script> tag (same technique as the main
@@ -280,27 +282,25 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
 
         function createVendorPO(vendorId, poNumber, lines, headerValues, soId) {
             try {
-                // record.transform() is the only SuiteScript mechanism that
-                // creates the linkedtransaction table entry NetSuite needs to
-                // display the PO on the SO's Related Records tab. Using
-                // record.create() with createdfrom only sets the body field and
-                // does NOT create that relationship.
-                var newPO = record.transform({
-                    fromType:  record.Type.SALES_ORDER,
-                    fromId:    soId,
-                    toType:    record.Type.PURCHASE_ORDER,
+                // record.create() with createdfrom = SO internal ID is the
+                // correct SuiteScript path for Special Order POs. NetSuite
+                // recognises createdfrom pointing to an SO and displays the PO
+                // on the SO's Related Records tab automatically.
+                //
+                // IMPORTANT: soId arrives as a URL parameter string. createdfrom
+                // is an integer field — passing a string silently fails to link
+                // the records. parseInt() is required.
+                //
+                // Note: record.transform() from SO → PO is NOT a supported
+                // NetSuite transformation type (INVALID_RCRD_TRANSFRM error).
+                var newPO = record.create({
+                    type:      record.Type.PURCHASE_ORDER,
                     isDynamic: true
                 });
 
-                // Remove all lines auto-copied from the SO — we add only
-                // the lines belonging to this vendor group below.
-                var existingLines = newPO.getLineCount({ sublistId: 'item' });
-                for (var i = existingLines - 1; i >= 0; i--) {
-                    newPO.removeLine({ sublistId: 'item', line: i });
-                }
-
-                newPO.setValue({ fieldId: 'entity', value: vendorId });
-                newPO.setValue({ fieldId: 'tranid',  value: poNumber });
+                newPO.setValue({ fieldId: 'createdfrom', value: parseInt(soId, 10) });
+                newPO.setValue({ fieldId: 'entity',      value: vendorId });
+                newPO.setValue({ fieldId: 'tranid',      value: poNumber });
 
                 Object.keys(headerValues).forEach(function (fld) {
                     var val = headerValues[fld];
