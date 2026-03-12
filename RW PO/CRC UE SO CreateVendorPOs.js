@@ -108,19 +108,24 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
         /**
          * Reads custcol_crc_created_po_id from every SO item line, collects
          * the unique PO internal IDs, looks up each PO's number / vendor /
-         * status / amount, then renders a "Purchase Orders" section directly
-         * on the SO form.
+         * status / amount, then renders a "Purchase Orders (N)" tab in the
+         * SO form tab bar next to Related Records.
          *
-         * This replaces the native Related Records tab behaviour because
-         * NetSuite's Special Order relationship (which drives that tab) cannot
-         * be written by record.create() — it is an internal-only pipeline.
+         * Uses SublistType.LIST — NOT INLINEHTML. INLINEHTML in a UE
+         * beforeLoad always renders into the page header regardless of any
+         * container or tab assignment; it cannot be placed inside a tab.
+         * A LIST sublist respects the tab parameter and renders correctly
+         * inside the tab body.
+         *
+         * The "Open" URL column uses linkText so every row shows the word
+         * "Open" as a clickable link to its specific PO.
          */
         function displayLinkedPOs(context) {
             try {
                 var soRec     = context.newRecord;
                 var lineCount = soRec.getLineCount({ sublistId: 'item' });
 
-                // Collect unique PO IDs stamped on SO lines
+                // ── Collect unique PO IDs stamped on SO lines ─────────────
                 var poIdMap = {};
                 for (var i = 0; i < lineCount; i++) {
                     var poId = soRec.getSublistValue({
@@ -135,7 +140,7 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
 
                 var poIdList = Object.keys(poIdMap);
                 if (poIdList.length === 0) {
-                    return; // No linked POs yet — don't add the section
+                    return; // No linked POs yet — don't add the tab
                 }
 
                 // ── Look up PO details ────────────────────────────────────
@@ -158,61 +163,44 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
                     return;
                 }
 
-                // ── Build HTML table ──────────────────────────────────────
-                var html =
-                    '<table style="border-collapse:collapse;width:100%;' +
-                    'font-family:Arial,sans-serif;font-size:13px;">' +
-                    '<thead>' +
-                    '<tr style="background:#1F7EC2;color:#fff;">' +
-                    '<th style="padding:7px 12px;text-align:left;">PO Number</th>' +
-                    '<th style="padding:7px 12px;text-align:left;">Vendor</th>' +
-                    '<th style="padding:7px 12px;text-align:left;">Status</th>' +
-                    '<th style="padding:7px 12px;text-align:right;">Amount</th>' +
-                    '</tr>' +
-                    '</thead><tbody>';
-
-                poResults.forEach(function (r, idx) {
-                    var bg     = idx % 2 === 0 ? '#f9f9f9' : '#fff';
-                    var id     = r.id;
-                    var num    = r.getValue({ name: 'tranid'  }) || '—';
-                    var vendor = r.getText({  name: 'entity'  }) || '—';
-                    var status = r.getText({  name: 'status'  }) || '—';
-                    var amt    = r.getValue({ name: 'amount'  }) || '0.00';
-
-                    html +=
-                        '<tr style="background:' + bg + ';">' +
-                        '<td style="padding:6px 12px;">' +
-                        '<a href="/app/accounting/transactions/purchord.nl?id=' + id +
-                        '" target="_blank">' + num + '</a></td>' +
-                        '<td style="padding:6px 12px;">' + vendor + '</td>' +
-                        '<td style="padding:6px 12px;">' + status + '</td>' +
-                        '<td style="padding:6px 12px;text-align:right;">' + amt + '</td>' +
-                        '</tr>';
-                });
-
-                html += '</tbody></table>';
-
-                // ── Inject as a tab next to Related Records ───────────────
+                // ── Add tab to the SO tab bar ─────────────────────────────
                 context.form.addTab({
                     id:    'custpage_po_tab',
                     label: 'Purchase Orders (' + poResults.length + ')'
                 });
 
-                context.form.addFieldGroup({
-                    id:    'custpage_linked_pos_grp',
-                    label: ' ',
+                // ── Add LIST sublist inside the tab ───────────────────────
+                var sublist = context.form.addSublist({
+                    id:    'custpage_pos_list',
+                    type:  serverWidget.SublistType.LIST,
+                    label: 'Purchase Orders',
                     tab:   'custpage_po_tab'
                 });
 
-                var htmlField = context.form.addField({
-                    id:        'custpage_linked_pos_html',
-                    type:      serverWidget.FieldType.INLINEHTML,
-                    label:     'POs',
-                    container: 'custpage_linked_pos_grp'
-                });
-                htmlField.defaultValue = html;
+                sublist.addColumn({ id: 'custpage_po_num',    type: serverWidget.FieldType.TEXT,     label: 'PO Number' });
+                sublist.addColumn({ id: 'custpage_po_vendor', type: serverWidget.FieldType.TEXT,     label: 'Vendor'    });
+                sublist.addColumn({ id: 'custpage_po_status', type: serverWidget.FieldType.TEXT,     label: 'Status'    });
+                sublist.addColumn({ id: 'custpage_po_amount', type: serverWidget.FieldType.CURRENCY, label: 'Amount'    });
 
-                log.debug('Linked POs Displayed', poResults.length + ' PO(s) on SO');
+                // URL column: linkText sets the display text for all rows
+                // so each cell shows "Open" as a clickable link to that PO
+                var openCol = sublist.addColumn({
+                    id:    'custpage_po_open',
+                    type:  serverWidget.FieldType.URL,
+                    label: 'View PO'
+                });
+                openCol.linkText = 'Open';
+
+                // ── Populate one row per PO ───────────────────────────────
+                poResults.forEach(function (r, idx) {
+                    sublist.setSublistValue({ id: 'custpage_po_num',    line: idx, value: r.getValue({ name: 'tranid'  }) || '' });
+                    sublist.setSublistValue({ id: 'custpage_po_vendor', line: idx, value: r.getText({  name: 'entity'  }) || '' });
+                    sublist.setSublistValue({ id: 'custpage_po_status', line: idx, value: r.getText({  name: 'status'  }) || '' });
+                    sublist.setSublistValue({ id: 'custpage_po_amount', line: idx, value: String(r.getValue({ name: 'amount' }) || 0) });
+                    sublist.setSublistValue({ id: 'custpage_po_open',   line: idx, value: '/app/accounting/transactions/purchord.nl?id=' + r.id });
+                });
+
+                log.debug('Linked POs Tab Added', poResults.length + ' PO(s) on SO');
 
             } catch (e) {
                 log.error('displayLinkedPOs Error', e.toString());
