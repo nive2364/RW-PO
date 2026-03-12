@@ -163,7 +163,8 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                 throw new Error('Could not resolve customer last name for customer ' + customerId);
             }
 
-            var basePONumber = soNumber + '-' + customerLastName;
+            var customerName  = getCustomerDisplayName(customerId) || customerLastName;
+            var basePONumber  = soNumber + '-' + customerLastName;
             var headerValues = captureSOHeaderValues(soRecord);
 
             // ── Walk SO lines and classify ────────────────────────────────
@@ -256,7 +257,7 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
 
                 log.debug('Creating PO', 'Vendor: ' + group.vendorName + ', Number: ' + poNumber);
 
-                var newPoId = createVendorPO(group.vendorId, group.vendorName, poNumber, group.lines, headerValues, soId, customerId);
+                var newPoId = createVendorPO(group.vendorId, group.vendorName, poNumber, group.lines, headerValues, soId, customerId, customerName);
 
                 if (newPoId) {
                     // ── Stamp custom fields on SO lines (ID for duplicate
@@ -282,7 +283,7 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
         //  CREATE A SINGLE VENDOR PO
         // ══════════════════════════════════════════════════════════════════
 
-        function createVendorPO(vendorId, vendorName, poNumber, lines, headerValues, soId, customerId) {
+        function createVendorPO(vendorId, vendorName, poNumber, lines, headerValues, soId, customerId, customerName) {
             try {
                 // record.create() with createdfrom = SO internal ID is the
                 // correct SuiteScript path for Special Order POs. NetSuite
@@ -307,7 +308,11 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                 // Stamp the originating customer on the PO header so it flows
                 // through to the Special Order customer field on each line.
                 if (customerId) {
-                    try { newPO.setValue({ fieldId: 'customer', value: customerId }); } catch(e) {}
+                    try { newPO.setValue({ fieldId: 'customer',              value: customerId   }); } catch(e) {}
+                }
+                // Populate the custom Name field with the customer's display name
+                if (customerName) {
+                    try { newPO.setValue({ fieldId: 'custbody_crc_cust_name', value: customerName }); } catch(e) {}
                 }
 
                 Object.keys(headerValues).forEach(function (fld) {
@@ -552,6 +557,27 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                 return lookup.lastname || lookup.companyname || null;
             } catch (e) {
                 log.error('getCustomerLastName Failed', e.toString());
+                return null;
+            }
+        }
+
+        /**
+         * Returns the customer's full display name:
+         *   Individual → "First Last"
+         *   Company    → company name
+         */
+        function getCustomerDisplayName(customerId) {
+            try {
+                var lookup = search.lookupFields({
+                    type:    search.Type.CUSTOMER,
+                    id:      customerId,
+                    columns: ['firstname', 'lastname', 'companyname']
+                });
+                if (lookup.companyname) { return lookup.companyname; }
+                var parts = [lookup.firstname, lookup.lastname].filter(Boolean);
+                return parts.length > 0 ? parts.join(' ') : null;
+            } catch (e) {
+                log.error('getCustomerDisplayName Failed', e.toString());
                 return null;
             }
         }
