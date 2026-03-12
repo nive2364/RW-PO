@@ -59,13 +59,22 @@
  *
  * PREREQUISITES
  * ─────────────
- *   Create this custom field before deploying:
- *     Setup > Customization > Transaction Line Fields > New
+ *   Create BOTH custom fields before deploying:
+ *   Setup > Customization > Transaction Line Fields > New
+ *
+ *   Field 1 — duplicate prevention (hidden from users):
  *       Label:   Created PO ID
  *       ID:      custcol_crc_created_po_id
  *       Type:    Integer
  *       Applies: Sales Order
  *       Display: Hidden
+ *
+ *   Field 2 — visible PO number on the SO line:
+ *       Label:   Created PO Number
+ *       ID:      custcol_crc_created_po_num
+ *       Type:    Free-Form Text
+ *       Applies: Sales Order
+ *       Display: Normal (show on Items sublist)
  *
  * DEPLOYMENT
  * ──────────
@@ -84,11 +93,17 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
 
         /**
          * Custom line field that stores the PO internal ID created for each
-         * SO line. Used for duplicate prevention and for displaying the PO
-         * number on the SO line. Must be created before deploying — see
-         * PREREQUISITES in the header comment above.
+         * SO line. Used for duplicate prevention only — hidden from users.
+         * Must be created before deploying — see PREREQUISITES in the header.
          */
         var CREATED_PO_FIELD = 'custcol_crc_created_po_id';
+
+        /**
+         * Custom line field that displays the PO number (e.g. SO17001-Blair)
+         * on the SO line so users can see which PO was created for each line.
+         * Type: Free-Form Text, visible. See PREREQUISITES in the header.
+         */
+        var CREATED_PO_NUMBER_FIELD = 'custcol_crc_created_po_num';
 
         // ══════════════════════════════════════════════════════════════════
         //  ENTRY POINT
@@ -240,8 +255,9 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                 var newPoId = createVendorPO(group.vendorId, poNumber, group.lines, headerValues, soId);
 
                 if (newPoId) {
-                    // ── Stamp custom field on SO lines (duplicate prevention)
-                    stampSOLines(soId, group.lines, newPoId);
+                    // ── Stamp custom fields on SO lines (ID for duplicate
+                    //    prevention, number for display)
+                    stampSOLines(soId, group.lines, newPoId, poNumber);
 
                     result.posCreated.push({
                         poId:       newPoId,
@@ -321,16 +337,18 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
         // ══════════════════════════════════════════════════════════════════
 
         /**
-         * Writes the new PO's internal ID to custcol_crc_created_po_id on
-         * each originating SO line. This field:
-         *   - Is our own custom field so it is NOT system-protected
-         *   - Drives duplicate prevention on re-runs
-         *   - Can be displayed on the SO line as the PO reference
+         * Writes two fields on each originating SO line:
+         *   custcol_crc_created_po_id  — PO internal ID (Integer, hidden)
+         *                                Used for duplicate prevention on re-runs.
+         *   custcol_crc_created_po_num — PO number string (Text, visible)
+         *                                Displays the PO name on the SO line
+         *                                (e.g. "SO17001-Blair") so users can see
+         *                                which PO was created for each line.
          *
          * Uses soIndex (the line's array position when we read it) for
          * fast, exact matching — no item-ID ambiguity.
          */
-        function stampSOLines(soId, lines, poId) {
+        function stampSOLines(soId, lines, poId, poNumber) {
             try {
                 var soRec = record.load({
                     type:      record.Type.SALES_ORDER,
@@ -345,11 +363,17 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                         fieldId:   CREATED_PO_FIELD,
                         value:     poId
                     });
+                    soRec.setCurrentSublistValue({
+                        sublistId: 'item',
+                        fieldId:   CREATED_PO_NUMBER_FIELD,
+                        value:     poNumber
+                    });
                     soRec.commitLine({ sublistId: 'item' });
                 });
 
                 soRec.save({ ignoreMandatoryFields: true });
-                log.audit('SO Lines Stamped', lines.length + ' line(s) → PO ' + poId);
+                log.audit('SO Lines Stamped',
+                    lines.length + ' line(s) → PO ' + poId + ' (' + poNumber + ')');
 
             } catch (e) {
                 log.error('stampSOLines Failed', 'PO: ' + poId + ' — ' + e.toString());
