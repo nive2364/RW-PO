@@ -109,16 +109,19 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
          * Reads custcol_crc_created_po_id from every SO item line, collects
          * the unique PO internal IDs, looks up each PO's number / vendor /
          * status / amount, then renders a "Purchase Orders (N)" tab in the
-         * SO form tab bar next to Related Records.
+         * SO form tab bar.
          *
-         * Uses SublistType.LIST — NOT INLINEHTML. INLINEHTML in a UE
-         * beforeLoad always renders into the page header regardless of any
-         * container or tab assignment; it cannot be placed inside a tab.
-         * A LIST sublist respects the tab parameter and renders correctly
-         * inside the tab body.
+         * WHY FIELDGROUPS, NOT A SUBLIST
+         * ───────────────────────────────
+         * SublistType.LIST with a `tab` parameter on a *transaction* form in
+         * UE beforeLoad renders the sublist in the main form body, not inside
+         * the custom tab — the tab body stays empty regardless.
+         * INLINEHTML also ignores container/tab and always renders in the
+         * page header.
          *
-         * The "Open" URL column uses linkText so every row shows the word
-         * "Open" as a clickable link to its specific PO.
+         * addFieldGroup({ tab }) is the correct API for placing content inside
+         * a custom tab in UE beforeLoad.  One field group per PO, each holding
+         * four inline fields (Vendor, Status, Amount, View PO link).
          */
         function displayLinkedPOs(context) {
             try {
@@ -169,53 +172,73 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
                     label: 'Purchase Orders (' + poResults.length + ')'
                 });
 
-                // ── Add LIST sublist inside the tab ───────────────────────
-                var sublist = context.form.addSublist({
-                    id:    'custpage_pos_list',
-                    type:  serverWidget.SublistType.LIST,
-                    label: 'Purchase Orders',
-                    tab:   'custpage_po_tab'
-                });
-
-                sublist.addColumn({ id: 'custpage_po_num',    type: serverWidget.FieldType.TEXT, label: 'PO Number' });
-                sublist.addColumn({ id: 'custpage_po_vendor', type: serverWidget.FieldType.TEXT, label: 'Vendor'    });
-                sublist.addColumn({ id: 'custpage_po_status', type: serverWidget.FieldType.TEXT, label: 'Status'    });
-                sublist.addColumn({ id: 'custpage_po_amount', type: serverWidget.FieldType.TEXT, label: 'Amount'    });
-
-                // URL column: linkText sets the display text for all rows
-                // so each cell shows "Open" as a clickable link to that PO
-                var openCol = sublist.addColumn({
-                    id:    'custpage_po_open',
-                    type:  serverWidget.FieldType.URL,
-                    label: 'View PO'
-                });
-                openCol.linkText = 'Open';
-
-                // ── Populate one row per PO ───────────────────────────────
-                // Each row is wrapped in its own try/catch + debug log so
-                // any field-level failure surfaces in the execution log
-                // instead of silently swallowing the rest of the rows.
+                // ── One field group per PO inside the tab ─────────────────
+                // addFieldGroup with tab: 'custpage_po_tab' is the reliable
+                // way to place content inside a custom tab in UE beforeLoad.
                 poResults.forEach(function (r, idx) {
                     try {
-                        var poNum  = r.getValue({ name: 'tranid'  }) || '';
+                        var poNum  = r.getValue({ name: 'tranid'  }) || ('PO ' + (idx + 1));
                         var vendor = r.getText({  name: 'entity'  }) || '';
                         var status = r.getText({  name: 'status'  }) || '';
                         var rawAmt = r.getValue({ name: 'amount'  });
-                        var amount = rawAmt ? parseFloat(rawAmt).toFixed(2) : '0.00';
+                        var amount = rawAmt ? '$' + parseFloat(rawAmt).toFixed(2) : '$0.00';
+                        var fgId   = 'custpage_po_fg_' + idx;
 
-                        sublist.setSublistValue({ id: 'custpage_po_num',    line: idx, value: poNum   });
-                        sublist.setSublistValue({ id: 'custpage_po_vendor', line: idx, value: vendor  });
-                        sublist.setSublistValue({ id: 'custpage_po_status', line: idx, value: status  });
-                        sublist.setSublistValue({ id: 'custpage_po_amount', line: idx, value: amount  });
-                        sublist.setSublistValue({ id: 'custpage_po_open',   line: idx, value: '/app/accounting/transactions/purchord.nl?id=' + r.id });
+                        // Field group title = PO number
+                        context.form.addFieldGroup({
+                            id:    fgId,
+                            label: poNum,
+                            tab:   'custpage_po_tab'
+                        });
 
-                        log.debug('PO Row ' + idx, 'PO: ' + poNum + ' | Vendor: ' + vendor + ' | Status: ' + status + ' | Amt: ' + amount);
-                    } catch (rowErr) {
-                        log.error('PO Row ' + idx + ' Error', rowErr.toString());
+                        // Vendor (inline = display-only, no edit box)
+                        var fVendor = context.form.addField({
+                            id:        'custpage_po_vend_' + idx,
+                            type:      serverWidget.FieldType.TEXT,
+                            label:     'Vendor',
+                            container: fgId
+                        });
+                        fVendor.defaultValue = vendor;
+                        fVendor.updateDisplayType({ displayType: serverWidget.FieldDisplayType.INLINE });
+
+                        // Status
+                        var fStatus = context.form.addField({
+                            id:        'custpage_po_stat_' + idx,
+                            type:      serverWidget.FieldType.TEXT,
+                            label:     'Status',
+                            container: fgId
+                        });
+                        fStatus.defaultValue = status;
+                        fStatus.updateDisplayType({ displayType: serverWidget.FieldDisplayType.INLINE });
+
+                        // Amount
+                        var fAmount = context.form.addField({
+                            id:        'custpage_po_amt_' + idx,
+                            type:      serverWidget.FieldType.TEXT,
+                            label:     'Amount',
+                            container: fgId
+                        });
+                        fAmount.defaultValue = amount;
+                        fAmount.updateDisplayType({ displayType: serverWidget.FieldDisplayType.INLINE });
+
+                        // "View PO" clickable link
+                        var fLink = context.form.addField({
+                            id:        'custpage_po_link_' + idx,
+                            type:      serverWidget.FieldType.URL,
+                            label:     'View PO',
+                            container: fgId
+                        });
+                        fLink.defaultValue = '/app/accounting/transactions/purchord.nl?id=' + r.id;
+                        fLink.linkText = 'Open PO';
+
+                        log.debug('PO FieldGroup ' + idx, poNum + ' | ' + vendor + ' | ' + status + ' | ' + amount);
+
+                    } catch (fgErr) {
+                        log.error('PO FieldGroup ' + idx + ' Error', fgErr.toString());
                     }
                 });
 
-                log.debug('Linked POs Tab Added', poResults.length + ' PO(s) on SO');
+                log.debug('displayLinkedPOs', 'Added ' + poResults.length + ' field group(s) to Purchase Orders tab');
 
             } catch (e) {
                 log.error('displayLinkedPOs Error', e.toString());
