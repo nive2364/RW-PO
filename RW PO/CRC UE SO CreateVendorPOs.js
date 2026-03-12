@@ -10,11 +10,11 @@
  * One click creates all vendor POs at once, replacing the current workflow
  * where employees click "Spec. Ord." on each SO line individually.
  *
- * Also renders a "Purchase Orders" section directly on the SO form showing
- * every PO created from this SO — because NetSuite's native Related Records
- * tab Special Order relationship cannot be created via SuiteScript's
- * record.create() API. The section queries custcol_crc_created_po_id stamps
- * written by the Suitelet, so it always reflects the true linked POs.
+ * Also adds a "Purchase Orders (N)" tab to the SO form next to the Related
+ * Records tab, showing every PO created from this SO — because NetSuite's
+ * native Related Records tab Special Order relationship cannot be created via
+ * SuiteScript's record.create() API. The tab queries custcol_crc_created_po_id
+ * stamps written by the Suitelet, so it always reflects the true linked POs.
  *
  * HOW THE BUTTON WORKS
  * ────────────────────
@@ -192,18 +192,23 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
 
                 html += '</tbody></table>';
 
-                // ── Inject into the SO form ───────────────────────────────
-                var label = 'Purchase Orders (' + poResults.length + ')';
+                // ── Inject as a tab next to Related Records ───────────────
+                context.form.addTab({
+                    id:    'custpage_po_tab',
+                    label: 'Purchase Orders (' + poResults.length + ')'
+                });
+
                 context.form.addFieldGroup({
-                    id:    'custpage_linked_pos',
-                    label: label
+                    id:    'custpage_linked_pos_grp',
+                    label: ' ',
+                    tab:   'custpage_po_tab'
                 });
 
                 var htmlField = context.form.addField({
                     id:        'custpage_linked_pos_html',
                     type:      serverWidget.FieldType.INLINEHTML,
                     label:     'POs',
-                    container: 'custpage_linked_pos'
+                    container: 'custpage_linked_pos_grp'
                 });
                 htmlField.defaultValue = html;
 
