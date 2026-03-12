@@ -256,7 +256,7 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
 
                 log.debug('Creating PO', 'Vendor: ' + group.vendorName + ', Number: ' + poNumber);
 
-                var newPoId = createVendorPO(group.vendorId, poNumber, group.lines, headerValues, soId);
+                var newPoId = createVendorPO(group.vendorId, group.vendorName, poNumber, group.lines, headerValues, soId, customerId);
 
                 if (newPoId) {
                     // ── Stamp custom fields on SO lines (ID for duplicate
@@ -282,7 +282,7 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
         //  CREATE A SINGLE VENDOR PO
         // ══════════════════════════════════════════════════════════════════
 
-        function createVendorPO(vendorId, poNumber, lines, headerValues, soId) {
+        function createVendorPO(vendorId, vendorName, poNumber, lines, headerValues, soId, customerId) {
             try {
                 // record.create() with createdfrom = SO internal ID is the
                 // correct SuiteScript path for Special Order POs. NetSuite
@@ -303,6 +303,12 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                 newPO.setValue({ fieldId: 'createdfrom', value: parseInt(soId, 10) });
                 newPO.setValue({ fieldId: 'entity',      value: vendorId });
                 newPO.setValue({ fieldId: 'tranid',      value: poNumber });
+
+                // Stamp the originating customer on the PO header so it flows
+                // through to the Special Order customer field on each line.
+                if (customerId) {
+                    try { newPO.setValue({ fieldId: 'customer', value: customerId }); } catch(e) {}
+                }
 
                 Object.keys(headerValues).forEach(function (fld) {
                     var val = headerValues[fld];
@@ -325,6 +331,14 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                     // Line-level SO link — mirrors what Spec. Ord. sets natively
                     try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'ordertransaction', value: parseInt(soId, 10) }); } catch(e) {}
                     try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'orderline',        value: ld.soLineNum       }); } catch(e) {}
+                    // Customer (Special Order customer reference per line)
+                    if (customerId) {
+                        try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'customer',   value: customerId }); } catch(e) {}
+                    }
+                    // Vendor's item name/code
+                    if (vendorName) {
+                        try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'vendorname', value: vendorName }); } catch(e) {}
+                    }
                     if (ld.location)   { try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'location',   value: ld.location   }); } catch(e){} }
                     if (ld.department) { try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'department', value: ld.department }); } catch(e){} }
                     if (ld.class_)     { try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'class',      value: ld.class_     }); } catch(e){} }
