@@ -35,11 +35,12 @@
  *    for how to add that display field.
  *
  * 3. RELATED RECORDS TAB
- *    The PO is created with record.create() and createdfrom = parseInt(soId).
- *    NetSuite recognises createdfrom pointing to an SO as a Special Order
- *    relationship and shows the PO on the SO's Related Records tab.
- *    The parseInt() is critical — soId arrives as a URL parameter string and
- *    createdfrom silently fails to link when passed a string value.
+ *    The SO's Related Records tab is driven by line-level linking, not just
+ *    the PO body's createdfrom field. Each PO line must have:
+ *      ordertransaction = SO internal ID  (integer, not string)
+ *      orderline        = SO line number  (the 'line' field value on the SO)
+ *    These replicate exactly what NetSuite's native Spec. Ord. button writes.
+ *    createdfrom on the PO header is also set (parseInt) for completeness.
  *    Note: record.transform() from SO → PO is not a supported transformation.
  *
  * 4. RETURN TO SO BUTTON
@@ -310,13 +311,19 @@ define(['N/record', 'N/search', 'N/ui/serverWidget', 'N/log'],
                 });
 
                 // Dynamic mode: set description AFTER item so SO line
-                // description overrides the item-record default
+                // description overrides the item-record default.
+                // ordertransaction + orderline replicate the line-level link
+                // that NetSuite's native Spec. Ord. button creates — this is
+                // what drives the PO appearing on the SO's Related Records tab.
                 lines.forEach(function (ld) {
                     newPO.selectNewLine({ sublistId: 'item' });
-                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'item',        value: ld.itemId });
-                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'quantity',    value: ld.quantity });
-                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'rate',        value: ld.rate });
-                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'description', value: ld.description });
+                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'item',             value: ld.itemId });
+                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'quantity',         value: ld.quantity });
+                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'rate',             value: ld.rate });
+                    newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'description',      value: ld.description });
+                    // Line-level SO link — mirrors what Spec. Ord. sets natively
+                    try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'ordertransaction', value: parseInt(soId, 10) }); } catch(e) {}
+                    try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'orderline',        value: ld.soLineNum       }); } catch(e) {}
                     if (ld.location)   { try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'location',   value: ld.location   }); } catch(e){} }
                     if (ld.department) { try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'department', value: ld.department }); } catch(e){} }
                     if (ld.class_)     { try { newPO.setCurrentSublistValue({ sublistId: 'item', fieldId: 'class',      value: ld.class_     }); } catch(e){} }
