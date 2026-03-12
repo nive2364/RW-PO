@@ -34,14 +34,15 @@
  *    inline field on the SO line instead — see UE_SO_CreateVendorPOs.js
  *    for how to add that display field.
  *
- * 3. RELATED RECORDS TAB
- *    The SO's Related Records tab is driven by line-level linking, not just
- *    the PO body's createdfrom field. Each PO line must have:
- *      ordertransaction = SO internal ID  (integer, not string)
- *      orderline        = SO line number  (the 'line' field value on the SO)
- *    These replicate exactly what NetSuite's native Spec. Ord. button writes.
- *    createdfrom on the PO header is also set (parseInt) for completeness.
- *    Note: record.transform() from SO → PO is not a supported transformation.
+ * 3. LINKED PO DISPLAY (replaces Related Records tab)
+ *    NetSuite's Special Order relationship that drives the Related Records tab
+ *    is an internal-only pipeline — record.create() cannot write it regardless
+ *    of what fields are set (createdfrom, ordertransaction, orderline, etc.).
+ *    record.transform() from SO → PO is also not a supported transformation.
+ *    Instead, the UE script (CRC UE SO CreateVendorPOs.js) reads the
+ *    custcol_crc_created_po_id stamps from SO lines and renders a
+ *    "Purchase Orders" section directly on the SO form, showing PO number,
+ *    vendor, status, and amount with a direct link to each PO.
  *
  * 4. RETURN TO SO BUTTON
  *    The result page injects a <script> tag (same technique as the main
