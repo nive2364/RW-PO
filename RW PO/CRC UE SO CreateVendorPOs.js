@@ -177,10 +177,10 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
                     tab:   'custpage_po_tab'
                 });
 
-                sublist.addColumn({ id: 'custpage_po_num',    type: serverWidget.FieldType.TEXT,     label: 'PO Number' });
-                sublist.addColumn({ id: 'custpage_po_vendor', type: serverWidget.FieldType.TEXT,     label: 'Vendor'    });
-                sublist.addColumn({ id: 'custpage_po_status', type: serverWidget.FieldType.TEXT,     label: 'Status'    });
-                sublist.addColumn({ id: 'custpage_po_amount', type: serverWidget.FieldType.CURRENCY, label: 'Amount'    });
+                sublist.addColumn({ id: 'custpage_po_num',    type: serverWidget.FieldType.TEXT, label: 'PO Number' });
+                sublist.addColumn({ id: 'custpage_po_vendor', type: serverWidget.FieldType.TEXT, label: 'Vendor'    });
+                sublist.addColumn({ id: 'custpage_po_status', type: serverWidget.FieldType.TEXT, label: 'Status'    });
+                sublist.addColumn({ id: 'custpage_po_amount', type: serverWidget.FieldType.TEXT, label: 'Amount'    });
 
                 // URL column: linkText sets the display text for all rows
                 // so each cell shows "Open" as a clickable link to that PO
@@ -192,12 +192,27 @@ define(['N/ui/serverWidget', 'N/url', 'N/search', 'N/log'],
                 openCol.linkText = 'Open';
 
                 // ── Populate one row per PO ───────────────────────────────
+                // Each row is wrapped in its own try/catch + debug log so
+                // any field-level failure surfaces in the execution log
+                // instead of silently swallowing the rest of the rows.
                 poResults.forEach(function (r, idx) {
-                    sublist.setSublistValue({ id: 'custpage_po_num',    line: idx, value: r.getValue({ name: 'tranid'  }) || '' });
-                    sublist.setSublistValue({ id: 'custpage_po_vendor', line: idx, value: r.getText({  name: 'entity'  }) || '' });
-                    sublist.setSublistValue({ id: 'custpage_po_status', line: idx, value: r.getText({  name: 'status'  }) || '' });
-                    sublist.setSublistValue({ id: 'custpage_po_amount', line: idx, value: String(r.getValue({ name: 'amount' }) || 0) });
-                    sublist.setSublistValue({ id: 'custpage_po_open',   line: idx, value: '/app/accounting/transactions/purchord.nl?id=' + r.id });
+                    try {
+                        var poNum  = r.getValue({ name: 'tranid'  }) || '';
+                        var vendor = r.getText({  name: 'entity'  }) || '';
+                        var status = r.getText({  name: 'status'  }) || '';
+                        var rawAmt = r.getValue({ name: 'amount'  });
+                        var amount = rawAmt ? parseFloat(rawAmt).toFixed(2) : '0.00';
+
+                        sublist.setSublistValue({ id: 'custpage_po_num',    line: idx, value: poNum   });
+                        sublist.setSublistValue({ id: 'custpage_po_vendor', line: idx, value: vendor  });
+                        sublist.setSublistValue({ id: 'custpage_po_status', line: idx, value: status  });
+                        sublist.setSublistValue({ id: 'custpage_po_amount', line: idx, value: amount  });
+                        sublist.setSublistValue({ id: 'custpage_po_open',   line: idx, value: '/app/accounting/transactions/purchord.nl?id=' + r.id });
+
+                        log.debug('PO Row ' + idx, 'PO: ' + poNum + ' | Vendor: ' + vendor + ' | Status: ' + status + ' | Amt: ' + amount);
+                    } catch (rowErr) {
+                        log.error('PO Row ' + idx + ' Error', rowErr.toString());
+                    }
                 });
 
                 log.debug('Linked POs Tab Added', poResults.length + ' PO(s) on SO');
